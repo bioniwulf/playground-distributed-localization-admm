@@ -1,0 +1,33 @@
+experiment_type: exp1_random_convergence
+output_root: results
+master_seed: 40
+network:
+  sensor_positions:
+    - [-100.0, -100.0]
+    - [-100.0,  100.0]
+    - [ 100.0,  100.0]
+    - [ 100.0, -100.0]
+  adjacency_matrix:
+    - [0, 1, 0, 1]
+    - [1, 0, 1, 0]
+    - [0, 1, 0, 1]
+    - [1, 0, 1, 0]
+physics:
+  sound_speed_mps: 1500.0
+  emission_time_s: 0.0
+region_box:
+  xmin: -150.0
+  xmax: +150.0
+  ymin: -150.0
+  ymax: +150.0
+num_targets: 100
+sigma_s: 1.0e-5
+dadmm:
+  rho_p: 5.0e-7
+  rho_t: 10.0
+  eps_feas: 1.0e-5
+  eps_conv: 1.0e-5
+  max_iterations: 1000
+  direction_epsilon: 1.0e-9
+  save_history: true
+  dual_update_rule: standard_consensus

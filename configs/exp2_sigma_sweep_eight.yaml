@@ -1,0 +1,46 @@
+experiment_type: exp2_sigma_sweep
+output_root: results
+master_seed: 123
+network:
+  sensor_positions:
+    - [  5.0,  82.0]   # left-middle
+    - [ 28.0, 145.0]   # top-left
+    - [ 92.0, 112.0]   # upper-center
+    - [110.0,  55.0]   # center-lower
+    - [ 40.0,  10.0]   # bottom-left
+    - [200.0, 150.0]   # top-right
+    - [236.0,  86.0]   # right-middle
+    - [202.0,   0.0]   # bottom-right
+
+  adjacency_matrix:
+    - [0, 1, 0, 0, 1, 0, 0, 0]
+    - [1, 0, 1, 0, 0, 0, 0, 0]
+    - [0, 1, 0, 1, 0, 1, 0, 0]
+    - [0, 0, 1, 0, 1, 0, 0, 1]
+    - [1, 0, 0, 1, 0, 0, 0, 0]
+    - [0, 0, 1, 0, 0, 0, 1, 0]
+    - [0, 0, 0, 0, 0, 1, 0, 1]
+    - [0, 0, 0, 1, 0, 0, 1, 0]
+physics:
+  sound_speed_mps: 1500.0
+  emission_time_s: 0.1
+target_position: [150.0, 80.0]
+sigma_values: [1.0e-05, 2.0e-05, 4.0e-05, 6.0e-05, 8.0e-05, 1.0e-04, 2.0e-04, 4.0e-04, 6.0e-04, 8.0e-04, 1.0e-03]
+num_trials: 50
+dadmm:
+  rho_p: 5.0e-7
+  rho_t: 10.0
+  eps_feas: 1.0e-4
+  eps_conv: 1.0e-4
+  eps_values: [1.0e-3, 1.0e-4, 1.0e-5]
+  max_iterations: 1000
+  direction_epsilon: 1.0e-9
+  save_history: false
+  dual_update_rule: standard_consensus
+centralized:
+  ipopt_max_iter: 500
+  ipopt_tol: 1.0e-3
+  ipopt_print_level: 0
+crlb:
+  epsilon_radius_m: 1.0
+  confidence_k_sigma: 3.0

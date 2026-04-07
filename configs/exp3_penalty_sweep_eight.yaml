@@ -1,0 +1,44 @@
+experiment_type: exp3_penalty_sweep
+output_root: results
+master_seed: 777
+network:
+  sensor_positions:
+    - [  5.0,  82.0]   # left-middle
+    - [ 28.0, 145.0]   # top-left
+    - [ 92.0, 112.0]   # upper-center
+    - [110.0,  55.0]   # center-lower
+    - [ 40.0,  10.0]   # bottom-left
+    - [200.0, 150.0]   # top-right
+    - [236.0,  86.0]   # right-middle
+    - [202.0,   0.0]   # bottom-right
+
+  adjacency_matrix:
+    - [0, 1, 0, 0, 1, 0, 0, 0]
+    - [1, 0, 1, 0, 0, 0, 0, 0]
+    - [0, 1, 0, 1, 0, 1, 0, 0]
+    - [0, 0, 1, 0, 1, 0, 0, 1]
+    - [1, 0, 0, 1, 0, 0, 0, 0]
+    - [0, 0, 1, 0, 0, 0, 1, 0]
+    - [0, 0, 0, 0, 0, 1, 0, 1]
+    - [0, 0, 0, 1, 0, 0, 1, 0]
+physics:
+  sound_speed_mps: 1500.0
+  emission_time_s: 0.1
+target_position: [70.0, 30.0]
+sigma_s: 1.0e-5
+rho_p_values: [1.0e-8, 5.0e-8, 1.0e-7, 5.0e-7, 1.0e-6, 5.0e-6, 1.0e-7]
+rho_t_values: [0.5, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0]
+num_trials: 1
+observed_agent_id: 3
+dadmm:
+  rho_p: 5.0e-7
+  rho_t: 10.0
+  eps_feas: 1.0e-4
+  eps_conv: 1.0e-4
+  max_iterations: 400
+  direction_epsilon: 1.0e-9
+  save_history: true
+  dual_update_rule: standard_consensus
+crlb:
+  epsilon_radius_m: 1.0
+  confidence_k_sigma: 3.0

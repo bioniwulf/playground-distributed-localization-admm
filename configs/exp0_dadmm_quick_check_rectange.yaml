@@ -1,0 +1,29 @@
+experiment_type: exp0_dadmm_quick_check
+output_root: results
+master_seed: 2026
+network:
+  sensor_positions:
+    - [ 10.0,  10.0]
+    - [ 80.0,   0.0]
+    - [ 00.0,  90.0]
+  adjacency_matrix:
+    - [0, 1, 1]
+    - [1, 0, 1]
+    - [1, 1, 0]
+physics:
+  sound_speed_mps: 1500.0
+  emission_time_s: 0.0
+target_position: [40.0, 40.0]
+sigma_s: 1.0e-5
+dadmm:
+  rho_p: 5.0e-7
+  rho_t: 10.0
+  eps_feas: 1.0e-4
+  eps_conv: 1.0e-4
+  max_iterations: 1000
+  direction_epsilon: 1.0e-9
+  warm_start:
+    position_m: [20.0, 20.0]
+    emission_time_s: 0.0
+  save_history: true
+  dual_update_rule: standard_consensus
