@@ -3,7 +3,9 @@ from scipy.optimize import minimize
 
 from dadmm_localization.config import DadmmConfig
 from dadmm_localization.dadmm_solver import (
+    _advance_distributed_stopping_flags,
     _build_default_warm_start,
+    _compute_local_admm_residuals,
     _solve_local_primal_edge_closed_form,
     run_dadmm,
 )
@@ -106,6 +108,82 @@ def test_run_dadmm_produces_finite_outputs() -> None:
     assert np.all(np.isfinite(result.agent_times_s))
     assert np.all(np.isfinite(result.final_primal_residuals))
     assert np.all(np.isfinite(result.final_dual_residuals))
+
+
+def test_distributed_stopping_flags_propagate_over_graph_diameter() -> None:
+    neighbor_indices = (
+        np.array([1], dtype=int),
+        np.array([0, 2], dtype=int),
+        np.array([1, 3], dtype=int),
+        np.array([2], dtype=int),
+    )
+    diameter = 3
+    flags = np.zeros((4, diameter + 1), dtype=bool)
+
+    flags = _advance_distributed_stopping_flags(
+        previous_flags=flags,
+        local_converged=np.array([False, True, True, True], dtype=bool),
+        neighbor_indices=neighbor_indices,
+    )
+    for _ in range(diameter):
+        flags = _advance_distributed_stopping_flags(
+            previous_flags=flags,
+            local_converged=np.ones(4, dtype=bool),
+            neighbor_indices=neighbor_indices,
+        )
+
+    assert np.all(flags[:, diameter])
+
+
+def test_distributed_stopping_flags_delay_termination_by_graph_diameter() -> None:
+    network = _square_network()
+    flags = np.ones((network.num_agents, network.diameter + 1), dtype=bool)
+    local_converged = np.ones(network.num_agents, dtype=bool)
+
+    flags = _advance_distributed_stopping_flags(
+        previous_flags=flags,
+        local_converged=local_converged,
+        neighbor_indices=network.neighbor_indices,
+    )
+    assert np.all(flags[:, network.diameter])
+
+    flags = _advance_distributed_stopping_flags(
+        previous_flags=flags,
+        local_converged=local_converged,
+        neighbor_indices=network.neighbor_indices,
+    )
+    assert not np.any(flags[:, network.diameter])
+
+
+def test_local_admm_residuals_match_algorithm_formulas() -> None:
+    positions = np.array([[2.0, 1.0], [4.0, 1.0]], dtype=float)
+    times = np.array([0.5, 0.7], dtype=float)
+    edge_positions = np.zeros((2, 2, 2), dtype=float)
+    previous_edge_positions = np.zeros_like(edge_positions)
+    edge_times = np.zeros((2, 2), dtype=float)
+    previous_edge_times = np.zeros_like(edge_times)
+    edge_positions[0, 1] = edge_positions[1, 0] = np.array([3.0, 1.0])
+    previous_edge_positions[0, 1] = previous_edge_positions[1, 0] = np.array([2.5, 0.5])
+    edge_times[0, 1] = edge_times[1, 0] = 0.6
+    previous_edge_times[0, 1] = previous_edge_times[1, 0] = 0.55
+    neighbor_indices = (np.array([1], dtype=int), np.array([0], dtype=int))
+
+    primal, dual = _compute_local_admm_residuals(
+        positions_m=positions,
+        emission_times_s=times,
+        edge_positions_m=edge_positions,
+        previous_edge_positions_m=previous_edge_positions,
+        edge_times_s=edge_times,
+        previous_edge_times_s=previous_edge_times,
+        neighbor_indices=neighbor_indices,
+        rho_p=2.0,
+        rho_t=3.0,
+    )
+
+    expected_primal = np.sqrt(2.0 * 1.0**2 + 3.0 * 0.1**2)
+    expected_dual = np.sqrt(2.0 * (0.5**2 + 0.5**2) + 3.0 * 0.05**2)
+    np.testing.assert_allclose(primal, expected_primal)
+    np.testing.assert_allclose(dual, expected_dual)
 
 
 def test_default_warm_start_uses_local_receiver_centroids() -> None:
@@ -262,6 +340,7 @@ def test_run_dadmm_converges_in_noiseless_case() -> None:
     result = run_dadmm(network, measurements, config)
 
     assert result.converged
+    assert np.all(result.iterations_per_agent == result.iterations_global)
     assert float(np.max(result.final_primal_residuals)) <= config.eps_feas
     assert float(np.max(result.final_dual_residuals)) <= config.eps_conv
     np.testing.assert_allclose(result.consensus_position_m, target.position_m, atol=1.0e-2)

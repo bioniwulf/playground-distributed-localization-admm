@@ -41,6 +41,104 @@ def _weighted_state_norm(
     )
 
 
+def _advance_distributed_stopping_flags(
+    previous_flags: np.ndarray,
+    local_converged: np.ndarray,
+    neighbor_indices: tuple[np.ndarray, ...],
+) -> np.ndarray:
+    """Advance one exact dynamic max-consensus stopping iteration.
+
+    A true flag denotes a local stopping-condition violation. Level zero is
+    replaced by the current local flags, while every higher level propagates
+    the preceding iteration's flags across one closed-neighborhood hop.
+
+    Args:
+        previous_flags: Binary flags with shape `(num_agents, diameter + 1)`.
+        local_converged: Current local stopping decisions for all receivers.
+        neighbor_indices: Neighbor indices for every receiver.
+
+    Returns:
+        Updated binary max-consensus flags.
+    """
+
+    num_agents, num_levels = previous_flags.shape
+    next_flags = np.ones_like(previous_flags, dtype=bool)
+    next_flags[:, 0] = ~local_converged
+
+    for level in range(1, num_levels):
+        for receiver_id in range(num_agents):
+            neighbors = neighbor_indices[receiver_id]
+            next_flags[receiver_id, level] = bool(
+                previous_flags[receiver_id, level - 1]
+                or np.any(previous_flags[neighbors, level - 1])
+            )
+
+    return next_flags
+
+
+def _compute_local_admm_residuals(
+    *,
+    positions_m: np.ndarray,
+    emission_times_s: np.ndarray,
+    edge_positions_m: np.ndarray,
+    previous_edge_positions_m: np.ndarray,
+    edge_times_s: np.ndarray,
+    previous_edge_times_s: np.ndarray,
+    neighbor_indices: tuple[np.ndarray, ...],
+    rho_p: float,
+    rho_t: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the receiver-local residuals used by the stopping criterion.
+
+    Args:
+        positions_m: Current local position states.
+        emission_times_s: Current local emission-time states.
+        edge_positions_m: Current edge-consensus positions.
+        previous_edge_positions_m: Previous edge-consensus positions.
+        edge_times_s: Current edge-consensus times.
+        previous_edge_times_s: Previous edge-consensus times.
+        neighbor_indices: Neighbor indices for every receiver.
+        rho_p: Position penalty parameter.
+        rho_t: Time penalty parameter.
+
+    Returns:
+        Local primal and dual residual norms for all receivers.
+    """
+
+    num_agents = positions_m.shape[0]
+    primal_residuals = np.zeros(num_agents, dtype=float)
+    dual_residuals = np.zeros(num_agents, dtype=float)
+
+    for receiver_id, neighbors in enumerate(neighbor_indices):
+        primal_position_deltas = positions_m[receiver_id] - edge_positions_m[receiver_id, neighbors]
+        primal_time_deltas = emission_times_s[receiver_id] - edge_times_s[receiver_id, neighbors]
+        primal_residuals[receiver_id] = float(
+            np.sqrt(
+                rho_p * float(np.sum(primal_position_deltas * primal_position_deltas))
+                + rho_t * float(np.sum(primal_time_deltas * primal_time_deltas))
+            )
+        )
+
+        dual_position_delta = np.sum(
+            edge_positions_m[receiver_id, neighbors]
+            - previous_edge_positions_m[receiver_id, neighbors],
+            axis=0,
+        )
+        dual_time_delta = float(
+            np.sum(
+                edge_times_s[receiver_id, neighbors] - previous_edge_times_s[receiver_id, neighbors]
+            )
+        )
+        dual_residuals[receiver_id] = _weighted_state_norm(
+            delta_position_m=dual_position_delta,
+            delta_time_s=dual_time_delta,
+            rho_p=rho_p,
+            rho_t=rho_t,
+        )
+
+    return primal_residuals, dual_residuals
+
+
 def _resolve_direction(
     primary_vector: np.ndarray,
     previous_vector: np.ndarray,
@@ -119,9 +217,7 @@ def _solve_local_time_radius_closed_form(
     next_time_s, next_radius_m = np.linalg.solve(system, rhs)
     if next_radius_m < 0.0:
         next_radius_m = 0.0
-        next_time_s = (
-            arrival_time_s + rho_t * degree * anchor_time_s
-        ) / (1.0 + rho_t * degree)
+        next_time_s = (arrival_time_s + rho_t * degree * anchor_time_s) / (1.0 + rho_t * degree)
 
     return float(next_time_s), float(next_radius_m)
 
@@ -307,8 +403,8 @@ def run_dadmm(
     u_positions = np.zeros((num_agents, num_agents, 2), dtype=float)
     u_times = np.zeros((num_agents, num_agents), dtype=float)
 
-    iterations_per_agent = np.full(num_agents, -1, dtype=int)
-    converged_mask = np.zeros(num_agents, dtype=bool)
+    iterations_per_agent = np.full(num_agents, config.max_iterations, dtype=int)
+    stopping_flags = np.ones((num_agents, network.diameter + 1), dtype=bool)
     history: list[DadmmIterationRecord] = []
     final_primal = np.full(num_agents, np.inf, dtype=float)
     final_dual = np.full(num_agents, np.inf, dtype=float)
@@ -326,7 +422,8 @@ def run_dadmm(
 
     for iteration in range(1, config.max_iterations + 1):
         positions_prev = positions_m.copy()
-        times_prev = emission_times_s.copy()
+        z_positions_prev = z_positions.copy()
+        z_times_prev = z_times.copy()
 
         next_positions = np.empty_like(positions_m)
         next_times = np.empty_like(emission_times_s)
@@ -373,29 +470,19 @@ def run_dadmm(
             u_positions[i, nbrs] += next_positions[i] - z_positions[i, nbrs]
             u_times[i, nbrs] += next_times[i] - z_times[i, nbrs]
 
-        primal_residuals = np.zeros(num_agents, dtype=float)
-        dual_residuals = np.zeros(num_agents, dtype=float)
+        primal_residuals, dual_residuals = _compute_local_admm_residuals(
+            positions_m=next_positions,
+            emission_times_s=next_times,
+            edge_positions_m=z_positions,
+            previous_edge_positions_m=z_positions_prev,
+            edge_times_s=z_times,
+            previous_edge_times_s=z_times_prev,
+            neighbor_indices=network.neighbor_indices,
+            rho_p=rho_p,
+            rho_t=rho_t,
+        )
         local_costs = np.zeros(num_agents, dtype=float)
         for agent_id in range(num_agents):
-            neighbors = network.neighbor_indices[agent_id]
-            weighted_neighbor_norms = [
-                _weighted_state_norm(
-                    delta_position_m=next_positions[agent_id] - z_positions[agent_id, neighbor_id],
-                    delta_time_s=float(next_times[agent_id] - z_times[agent_id, neighbor_id]),
-                    rho_p=rho_p,
-                    rho_t=rho_t,
-                )
-                for neighbor_id in neighbors
-            ]
-            primal_residuals[agent_id] = (
-                max(weighted_neighbor_norms) if weighted_neighbor_norms else 0.0
-            )
-            dual_residuals[agent_id] = len(neighbors) * _weighted_state_norm(
-                delta_position_m=next_positions[agent_id] - positions_prev[agent_id],
-                delta_time_s=float(next_times[agent_id] - times_prev[agent_id]),
-                rho_p=rho_p,
-                rho_t=rho_t,
-            )
             local_costs[agent_id] = local_toa_cost(
                 sensor_position_m=network.sensor_positions_m[agent_id],
                 sound_speed_mps=sound_speed,
@@ -423,13 +510,14 @@ def run_dadmm(
                 )
             )
 
-        newly_converged = (
-            (~converged_mask)
-            & (primal_residuals <= config.eps_feas)
-            & (dual_residuals <= config.eps_conv)
+        local_converged = (primal_residuals <= config.eps_feas) & (
+            dual_residuals <= config.eps_conv
         )
-        iterations_per_agent[newly_converged] = iteration
-        converged_mask |= newly_converged
+        stopping_flags = _advance_distributed_stopping_flags(
+            previous_flags=stopping_flags,
+            local_converged=local_converged,
+            neighbor_indices=network.neighbor_indices,
+        )
 
         positions_m = next_positions
         emission_times_s = next_times
@@ -438,11 +526,11 @@ def run_dadmm(
         final_costs = local_costs
         completed_iterations = iteration
 
-        if np.all(converged_mask):
+        if not np.any(stopping_flags[:, network.diameter]):
+            iterations_per_agent.fill(iteration)
             break
 
-    if not np.all(converged_mask):
-        iterations_per_agent[~converged_mask] = config.max_iterations
+    converged = not np.any(stopping_flags[:, network.diameter])
 
     return DadmmResult(
         agent_positions_m=positions_m,
@@ -451,7 +539,7 @@ def run_dadmm(
         consensus_time_s=float(np.mean(emission_times_s)),
         iterations_global=completed_iterations,
         iterations_per_agent=iterations_per_agent,
-        converged=bool(np.all(converged_mask)),
+        converged=bool(converged),
         final_primal_residuals=final_primal,
         final_dual_residuals=final_dual,
         final_local_costs=final_costs,

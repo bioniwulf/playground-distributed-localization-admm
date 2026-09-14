@@ -22,6 +22,7 @@ class Network:
     adjacency_matrix: IntArray
     neighbor_indices: tuple[IntArray, ...]
     num_agents: int
+    diameter: int
     sound_speed_mps: float
     centroid_m: FloatArray
 

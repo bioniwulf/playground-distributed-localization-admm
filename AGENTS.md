@@ -147,8 +147,10 @@ Important implementation decisions:
 - Initialization follows the paper:
   - `P_i^0 = s_i`
   - `T_i^0 = tau_i`
-- Global stopping criterion:
-  - stop when all agents satisfy feasibility and convergence thresholds
+- Distributed stopping criterion:
+  - compute the local primal and dual residuals defined in the paper
+  - propagate local violation flags with exact dynamic max consensus over the graph diameter
+  - stop when every receiver's diameter-level flag is zero
   - otherwise stop at `max_iterations`
 
 ### Safeguard for degenerate position direction

@@ -38,6 +38,36 @@ def _check_connectedness(adjacency_matrix: np.ndarray) -> None:
         raise ValueError("Adjacency matrix must define a connected undirected graph.")
 
 
+def _compute_graph_diameter(adjacency_matrix: np.ndarray) -> int:
+    """Compute the diameter of a connected unweighted graph.
+
+    Args:
+        adjacency_matrix: Binary square adjacency matrix of a connected graph.
+
+    Returns:
+        Maximum shortest-path distance between any pair of vertices.
+    """
+
+    num_agents = adjacency_matrix.shape[0]
+    diameter = 0
+
+    for source in range(num_agents):
+        distances = np.full(num_agents, -1, dtype=int)
+        distances[source] = 0
+        queue: deque[int] = deque([source])
+
+        while queue:
+            node = queue.popleft()
+            for neighbor in np.flatnonzero(adjacency_matrix[node]):
+                if distances[neighbor] < 0:
+                    distances[neighbor] = distances[node] + 1
+                    queue.append(int(neighbor))
+
+        diameter = max(diameter, int(np.max(distances)))
+
+    return diameter
+
+
 def build_network(
     sensor_positions: ArrayLike,
     adjacency_matrix: ArrayLike,
@@ -86,6 +116,7 @@ def build_network(
         adjacency_matrix=adjacency,
         neighbor_indices=neighbor_indices,
         num_agents=positions.shape[0],
+        diameter=_compute_graph_diameter(adjacency),
         sound_speed_mps=float(sound_speed_mps),
         centroid_m=centroid,
     )

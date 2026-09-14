@@ -728,7 +728,7 @@ def _plot_exp2_sigma_std(
     fig, axis = plt.subplots(1, 1, figsize=(16, 8))
     # axis.set_title("Position Error Standard Deviation vs Noise Power")
     axis.set_xlabel(r"Measurement Noise $1 / \sigma^2$, dB")
-    axis.set_ylabel("Standard Deviation (m)")
+    axis.set_ylabel("RMSE (m)")
 
     axis.minorticks_on()
 
