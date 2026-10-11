@@ -679,10 +679,11 @@ def _plot_exp3_trace_family(
     axis.tick_params(width=0.1)
 
     sweep_values = np.sort(stats_df[sweep_column].unique())
+    # Use the same categorical palette for every DADMM family plot.
     color_map = plt.get_cmap("tab10")
     for curve_id, sweep_value in enumerate(sweep_values):
         curve_df = stats_df.loc[stats_df[sweep_column] == sweep_value].copy()
-        color = color_map(curve_id % color_map.N)
+        color = color_map(curve_id)
         iterations = curve_df["iteration"].to_numpy(dtype=float)
         mean_values = curve_df["mean_relative_error_pct"].to_numpy(dtype=float)
         ci_low = curve_df["relative_error_ci_low_pct"].to_numpy(dtype=float)
@@ -742,10 +743,13 @@ def _plot_exp2_sigma_std(
 
     if "eps_value" in dadmm_df.columns and dadmm_df["eps_value"].notna().any():
         eps_values = np.sort(dadmm_df["eps_value"].dropna().unique())
+        # Match the categorical palette used by the exp3 DADMM traces.
         color_map = plt.get_cmap("tab10")
+        # Reserve tab:green for the CRLB reference curve.
+        dadmm_color_indices = (0, 1, 3, 4, 5, 6, 7, 8, 9)
         for curve_id, eps_value in enumerate(eps_values):
             curve_df = dadmm_df[dadmm_df["eps_value"] == eps_value].sort_values("sigma_s")
-            color = color_map(curve_id % color_map.N)
+            color = color_map(dadmm_color_indices[curve_id])
             axis.plot(
                 curve_df["sigma2_db"],
                 curve_df["position_std_m"],
@@ -779,15 +783,15 @@ def _plot_exp2_sigma_std(
     axis.plot(
         centralized_df["sigma2_db"],
         centralized_df["position_std_m"],
-        "-s",
-        color="tab:blue",
+        "-^",
+        color="black",
         label="Centralized",
     )
     axis.fill_between(
         centralized_df["sigma2_db"],
         centralized_df["position_std_ci_low_m"],
         centralized_df["position_std_ci_high_m"],
-        color="tab:blue",
+        color="black",
         alpha=0.16,
         label="Centralized 95% CI",
     )
